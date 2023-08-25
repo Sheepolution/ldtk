@@ -90,6 +90,73 @@ class Definitions {
 		return false;
 	}
 
+	public function bakeAutoLayers(project:data.Project) {
+		var autoLayers = [];
+		for(ld in layers)
+			if( ld.isAutoLayer() )
+				bakeLayer(project, ld);
+		return autoLayers;
+	}
+
+	public function bakeLayer(project:data.Project, ld:data.def.LayerDef) {
+		// Backup project
+		var oldProject = project.clone();
+
+		// Create new baked layer
+		var existingLd = project.defs.getLayerDef(ld.identifier+"_baked");
+		if (existingLd != null) {
+			project.defs.removeLayerDef(existingLd);
+		}
+		var newLd = project.defs.duplicateLayerDef(ld, ld.identifier+"_baked");
+		newLd.type = Tiles;
+		newLd.autoRuleGroups = [];
+		newLd.autoSourceLayerDefUid = null;
+		newLd.tilesetDefUid = ld.tilesetDefUid;
+
+		// Update layer instances
+		var td = project.defs.getTilesetDef(newLd.tilesetDefUid);
+		var ops : Array<ui.modal.Progress.ProgressOp> = [];
+		for(w in project.worlds)
+		for(l in w.levels) {
+			var sourceLi = l.getLayerInstance(ld);
+			var newLi = l.getLayerInstance(newLd);
+			ops.push({
+				label: l.identifier,
+				cb: ()->{
+					ld.iterateActiveRulesInDisplayOrder( newLi, (r)->{ // TODO not sure which "li" should be used here
+						if( sourceLi.autoTilesCache.exists( r.uid ) ) {
+							for( allTiles in sourceLi.autoTilesCache.get( r.uid ).keyValueIterator() )
+							for( tileInfos in allTiles.value ) {
+								newLi.addGridTile(
+									Std.int(tileInfos.x/ld.gridSize),
+									Std.int(tileInfos.y/ld.gridSize),
+									tileInfos.tid,
+									tileInfos.flips,
+									!td.isTileOpaque(tileInfos.tid)
+								);
+							}
+						}
+					});
+
+					Editor.ME.ge.emit( LayerInstanceChangedGlobally(newLi) );
+				}
+			});
+		}
+
+		// Execute ops
+		new ui.modal.Progress(
+			L.t._("Baking layer instances"),
+			ops,
+			()->{
+				// select(newLd);
+
+				// Done, update layer def
+				Editor.ME.ge.emit( LayerDefAdded );
+				Editor.ME.setWorldMode(true);
+			}
+		);
+	}
+
 	public function getLayerDef(id:haxe.extern.EitherType<String,Int>) : Null<data.def.LayerDef> {
 		for(ld in layers)
 			if( ld.uid==id || ld.identifier==id )

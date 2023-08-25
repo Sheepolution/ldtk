@@ -670,6 +670,8 @@ class ProjectSaver extends dn.Process {
 			externLevels: [],
 		}
 
+		// var autoLayers = project.defs.bakeAutoLayers(project);
+
 		// Rebuild ToC
 		project.updateTableOfContent();
 

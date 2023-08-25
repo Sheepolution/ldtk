@@ -75,15 +75,23 @@ class ElectronMain {
 
 		#end
 
-		// Init window
-		mainWindow = new electron.main.BrowserWindow({
-			webPreferences: { nodeIntegration:true, contextIsolation:false },
+
+		var webPreferences:Dynamic = {
+			nodeIntegration: true,
+			contextIsolation: false
+		};
+
+		var settings:Dynamic = {
+			webPreferences: webPreferences,
 			fullscreenable: true,
 			show: false,
 			title: "LDtk",
 			icon: __dirname+"/appIcon.png",
 			backgroundColor: '#1e2229'
-		});
+		}
+
+		// Init window
+		mainWindow = new electron.main.BrowserWindow(settings);
 		mainWindow.once("ready-to-show", ev->{
 			mainWindow.webContents.setZoomFactor( settings.getAppZoomFactor() );
 			if( settings.v.startFullScreen )

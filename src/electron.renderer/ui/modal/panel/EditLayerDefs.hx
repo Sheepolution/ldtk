@@ -109,6 +109,10 @@ class EditLayerDefs extends ui.modal.Panel {
 		var oldProject = project.clone();
 
 		// Create new baked layer
+		var existingLd = project.defs.getLayerDef(ld.identifier+"_baked");
+		if (existingLd != null) {
+			project.defs.removeLayerDef(existingLd);
+		}
 		var newLd = project.defs.duplicateLayerDef(ld, ld.identifier+"_baked");
 		newLd.type = Tiles;
 		newLd.autoRuleGroups = [];

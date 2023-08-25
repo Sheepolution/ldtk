@@ -621,7 +621,7 @@ class Editor extends Page {
 					N.error("Cannot save over a backup file.");
 				else {
 					if( App.ME.isShiftDown() )
-						onSave(true);
+						project.defs.bakeAutoLayers(project);
 					else
 						onSave();
 				}
