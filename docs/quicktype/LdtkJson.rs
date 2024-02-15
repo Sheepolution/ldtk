@@ -100,8 +100,9 @@ pub struct LdtkJson {
     pub external_levels: bool,
 
     /// An array containing various advanced flags (ie. options or other states). Possible
-    /// values: `DiscardPreCsvIntGrid`, `ExportPreCsvIntGridFormat`, `IgnoreBackupSuggest`,
-    /// `PrependIndexToLevelFileNames`, `MultiWorlds`, `UseMultilinesType`
+    /// values: `DiscardPreCsvIntGrid`, `ExportOldTableOfContentData`,
+    /// `ExportPreCsvIntGridFormat`, `IgnoreBackupSuggest`, `PrependIndexToLevelFileNames`,
+    /// `MultiWorlds`, `UseMultilinesType`
     pub flags: Vec<Flag>,
 
     /// Naming convention for Identifiers (first-letter uppercase, full uppercase etc.) Possible
@@ -234,6 +235,9 @@ pub struct Definitions {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EntityDefinition {
+    /// If enabled, this entity is allowed to stay outside of the current level bounds
+    pub allow_out_of_bounds: bool,
+
     /// Base entity color
     pub color: String,
 
@@ -331,6 +335,9 @@ pub struct EntityDefinition {
     /// Unique Int identifier
     pub uid: i64,
 
+    /// This tile overrides the one defined in `tileRect` in the UI
+    pub ui_tile_rect: Option<TilesetRectangle>,
+
     /// Pixel width
     pub width: i64,
 }
@@ -406,6 +413,10 @@ pub struct FieldDefinition {
 
     pub editor_text_suffix: Option<String>,
 
+    /// If TRUE, the field value will be exported to the `toc` project JSON field. Only applies
+    /// to Entity fields.
+    pub export_to_toc: bool,
+
     /// User defined unique identifier
     pub identifier: String,
 
@@ -421,6 +432,9 @@ pub struct FieldDefinition {
     /// Optional regular expression that needs to be matched to accept values. Expected format:
     /// `/some_reg_ex/g`, with optional "i" flag.
     pub regex: Option<String>,
+
+    /// If enabled, this field will be searchable through LDtk command palette
+    pub searchable: bool,
 
     pub symmetrical_ref: bool,
 
@@ -682,8 +696,8 @@ pub struct EnumDefinition {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EnumValueDefinition {
-    /// **WARNING**: this deprecated value will be *removed* completely on version 1.4.0+
-    /// Replaced by: `tileRect`
+    /// **WARNING**: this deprecated value is no longer exported since version 1.4.0  Replaced
+    /// by: `tileRect`
     #[serde(rename = "__tileSrcRect")]
     pub tile_src_rect: Option<Vec<i64>>,
 
@@ -693,8 +707,8 @@ pub struct EnumValueDefinition {
     /// Enum value
     pub id: String,
 
-    /// **WARNING**: this deprecated value will be *removed* completely on version 1.4.0+
-    /// Replaced by: `tileRect`
+    /// **WARNING**: this deprecated value is no longer exported since version 1.4.0  Replaced
+    /// by: `tileRect`
     pub tile_id: Option<i64>,
 
     /// Optional tileset rectangle to represents this value
@@ -716,6 +730,10 @@ pub struct LayerDefinition {
     /// **WARNING**: this deprecated value is no longer exported since version 1.2.0  Replaced
     /// by: `tilesetDefUid`
     pub auto_tileset_def_uid: Option<i64>,
+
+    pub auto_tiles_killed_by_other_layer_uid: Option<i64>,
+
+    pub biome_field_uid: Option<i64>,
 
     /// Allow editor selections when the layer is not currently active.
     pub can_select_when_inactive: bool,
@@ -753,6 +771,9 @@ pub struct LayerDefinition {
     /// array order is not related to actual IntGrid values! As user can re-order IntGrid values
     /// freely, you may value "2" before value "1" in this array.
     pub int_grid_values: Vec<IntGridValueDefinition>,
+
+    /// Group informations for IntGrid values
+    pub int_grid_values_groups: Vec<IntGridValueGroupDefinition>,
 
     /// Parallax horizontal factor (from -1 to 1, defaults to 0) which affects the scrolling
     /// speed of this layer, creating a fake 3D (parallax) effect.
@@ -804,6 +825,12 @@ pub struct LayerDefinition {
 
     /// Unique Int identifier
     pub uid: i64,
+
+    /// Display tags
+    pub ui_filter_tags: Vec<String>,
+
+    /// Asynchronous rendering option for large/complex layers
+    pub use_async_render: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -811,12 +838,20 @@ pub struct LayerDefinition {
 pub struct AutoLayerRuleGroup {
     pub active: bool,
 
+    pub biome_requirement_mode: i64,
+
     /// *This field was removed in 1.0.0 and should no longer be used.*
     pub collapsed: Option<bool>,
+
+    pub color: Option<String>,
+
+    pub icon: Option<TilesetRectangle>,
 
     pub is_optional: bool,
 
     pub name: String,
+
+    pub required_biome_values: Vec<String>,
 
     pub rules: Vec<AutoLayerRuleDefinition>,
 
@@ -852,6 +887,9 @@ pub struct AutoLayerRuleDefinition {
     /// If TRUE, allow rule to be matched by flipping its pattern vertically
     pub flip_y: bool,
 
+    /// If TRUE, then the rule should be re-evaluated by the editor at one point
+    pub invalidated: bool,
+
     /// Default IntGrid value when checking cells outside of level bounds
     pub out_of_bounds_value: Option<i64>,
 
@@ -876,8 +914,9 @@ pub struct AutoLayerRuleDefinition {
     /// Pattern width & height. Should only be 1,3,5 or 7.
     pub size: i64,
 
-    /// Array of all the tile IDs. They are used randomly or as stamps, based on `tileMode` value.
-    pub tile_ids: Vec<i64>,
+    /// **WARNING**: this deprecated value is no longer exported since version 1.5.0  Replaced
+    /// by: `tileRectsIds`
+    pub tile_ids: Option<Vec<i64>>,
 
     /// Defines how tileIds array is used Possible values: `Single`, `Stamp`
     pub tile_mode: TileMode,
@@ -893,6 +932,9 @@ pub struct AutoLayerRuleDefinition {
 
     /// Min random offset for Y tile pos
     pub tile_random_y_min: i64,
+
+    /// Array containing all the possible tile IDs rectangles (picked randomly).
+    pub tile_rects_ids: Vec<Vec<i64>>,
 
     /// Tile X offset
     pub tile_x_offset: i64,
@@ -936,8 +978,12 @@ pub enum TileMode {
 
 /// IntGrid value definition
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct IntGridValueDefinition {
     pub color: String,
+
+    /// Parent group identifier (0 if none)
+    pub group_uid: i64,
 
     /// User defined unique identifier
     pub identifier: Option<String>,
@@ -946,6 +992,19 @@ pub struct IntGridValueDefinition {
 
     /// The IntGrid value itself
     pub value: i64,
+}
+
+/// IntGrid value group definition
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IntGridValueGroupDefinition {
+    /// User defined color
+    pub color: Option<String>,
+
+    /// User defined string identifier
+    pub identifier: Option<String>,
+
+    /// Group unique ID
+    pub uid: i64,
 }
 
 /// Type of the layer as Haxe Enum Possible values: `IntGrid`, `Entities`, `Tiles`,
@@ -1055,6 +1114,9 @@ pub enum Flag {
     #[serde(rename = "DiscardPreCsvIntGrid")]
     DiscardPreCsvIntGrid,
 
+    #[serde(rename = "ExportOldTableOfContentData")]
+    ExportOldTableOfContentData,
+
     #[serde(rename = "ExportPreCsvIntGridFormat")]
     ExportPreCsvIntGridFormat,
 
@@ -1105,6 +1167,8 @@ pub struct ForcedRefs {
 
     pub int_grid_value_def: Option<IntGridValueDefinition>,
 
+    pub int_grid_value_group_def: Option<IntGridValueGroupDefinition>,
+
     pub int_grid_value_instance: Option<IntGridValueInstance>,
 
     pub layer_def: Option<LayerDefinition>,
@@ -1126,6 +1190,8 @@ pub struct ForcedRefs {
     pub tileset_def: Option<TilesetDefinition>,
 
     pub tileset_rect: Option<TilesetRectangle>,
+
+    pub toc_instance_data: Option<LdtkTocInstanceData>,
 
     pub world: Option<World>,
 }
@@ -1159,13 +1225,13 @@ pub struct EntityInstance {
     #[serde(rename = "__tile")]
     pub tile: Option<TilesetRectangle>,
 
-    /// X world coordinate in pixels
+    /// X world coordinate in pixels. Only available in GridVania or Free world layouts.
     #[serde(rename = "__worldX")]
-    pub world_x: i64,
+    pub world_x: Option<i64>,
 
-    /// Y world coordinate in pixels
+    /// Y world coordinate in pixels Only available in GridVania or Free world layouts.
     #[serde(rename = "__worldY")]
-    pub world_y: i64,
+    pub world_y: Option<i64>,
 
     /// Reference of the **Entity definition** UID
     pub def_uid: i64,
@@ -1227,6 +1293,8 @@ pub struct FieldInstance {
 }
 
 /// This object describes the "location" of an Entity instance in the project worlds.
+///
+/// IID information of this instance
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ReferenceToAnEntityInstance {
@@ -1406,9 +1474,10 @@ pub struct Level {
     #[serde(rename = "__bgPos")]
     pub bg_pos: Option<LevelBackgroundPosition>,
 
-    /// An array listing all other levels touching this one on the world map.<br/>  Only relevant
-    /// for world layouts where level spatial positioning is manual (ie. GridVania, Free). For
-    /// Horizontal and Vertical layouts, this array is always empty.
+    /// An array listing all other levels touching this one on the world map. Since 1.4.0, this
+    /// includes levels that overlap in the same world layer, or in nearby world layers.<br/>
+    /// Only relevant for world layouts where level spatial positioning is manual (ie. GridVania,
+    /// Free). For Horizontal and Vertical layouts, this array is always empty.
     #[serde(rename = "__neighbours")]
     pub neighbours: Vec<NeighbourLevel>,
 
@@ -1521,8 +1590,11 @@ pub enum BgPos {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NeighbourLevel {
-    /// A single lowercase character tipping on the level location (`n`orth, `s`outh, `w`est,
-    /// `e`ast).
+    /// A lowercase string tipping on the level location (`n`orth, `s`outh, `w`est,
+    /// `e`ast).<br/>  Since 1.4.0, this value can also be `<` (neighbour depth is lower), `>`
+    /// (neighbour depth is greater) or `o` (levels overlap and share the same world
+    /// depth).<br/>  Since 1.5.3, this value can also be `nw`,`ne`,`sw` or `se` for levels only
+    /// touching corners.
     pub dir: String,
 
     /// Neighbour Instance Identifier
@@ -1534,10 +1606,34 @@ pub struct NeighbourLevel {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct LdtkTableOfContentEntry {
     pub identifier: String,
 
-    pub instances: Vec<ReferenceToAnEntityInstance>,
+    /// **WARNING**: this deprecated value will be *removed* completely on version 1.7.0+
+    /// Replaced by: `instancesData`
+    pub instances: Option<Vec<ReferenceToAnEntityInstance>>,
+
+    pub instances_data: Vec<LdtkTocInstanceData>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LdtkTocInstanceData {
+    /// An object containing the values of all entity fields with the `exportToToc` option
+    /// enabled. This object typing depends on actual field value types.
+    pub fields: Option<serde_json::Value>,
+
+    pub hei_px: i64,
+
+    /// IID information of this instance
+    pub iids: ReferenceToAnEntityInstance,
+
+    pub wid_px: i64,
+
+    pub world_x: i64,
+
+    pub world_y: i64,
 }
 
 /// **IMPORTANT**: this type is available as a preview. You can rely on it to update your

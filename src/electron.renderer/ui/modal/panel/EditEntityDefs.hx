@@ -34,7 +34,7 @@ class EditEntityDefs extends ui.modal.Panel {
 		// Presets
 		jEntityList.parent().find("button.presets").click( (ev)->{
 			var ctx = new ContextMenu(ev);
-			ctx.add({
+			ctx.addAction({
 				label: L.t._("Rectangle region"),
 				cb: ()->{
 					var ed = _createEntity();
@@ -48,7 +48,7 @@ class EditEntityDefs extends ui.modal.Panel {
 					editor.ge.emit( EntityDefChanged );
 				}
 			});
-			ctx.add({
+			ctx.addAction({
 				label: L.t._("Circle region"),
 				cb: ()->{
 					var ed = _createEntity();
@@ -149,7 +149,7 @@ class EditEntityDefs extends ui.modal.Panel {
 		}
 	}
 
-	function selectEntity(ed:Null<data.def.EntityDef>) {
+	public function selectEntity(ed:Null<data.def.EntityDef>) {
 		if( ed==null )
 			ed = editor.project.defs.entities[0];
 
@@ -173,7 +173,6 @@ class EditEntityDefs extends ui.modal.Panel {
 			return;
 		}
 
-		JsTools.parseComponents(jEntityForm);
 		jAll.css("visibility","visible");
 		jContent.find(".none").hide();
 
@@ -196,7 +195,19 @@ class EditEntityDefs extends ui.modal.Panel {
 		var ted = new ui.TagEditor(
 			curEntity.tags,
 			()->editor.ge.emit(EntityDefChanged),
-			()->project.defs.getRecallEntityTags([curEntity.tags])
+			()->project.defs.getRecallEntityTags([curEntity.tags]),
+			()->return project.defs.entities.map( ed->ed.tags ),
+			(oldT,newT)->{
+				for(ed in project.defs.entities)
+					for(fd in ed.fieldDefs)
+						fd.allowedRefTags.rename(oldT, newT);
+
+				for(ld in project.defs.layers) {
+					ld.requiredTags.rename(oldT, newT);
+					ld.excludedTags.rename(oldT, newT);
+				}
+				editor.ge.emit( EntityDefChanged );
+			}
 		);
 		jEntityForm.find("#tags").empty().append(ted.jEditor);
 
@@ -448,6 +459,37 @@ class EditEntityDefs extends ui.modal.Panel {
 		}
 
 
+		// UI override tile
+		JsTools.createTilesetSelect(
+			project,
+			jEntityForm.find(".uiTileset"),
+			curEntity.uiTileRect!=null ? curEntity.uiTileRect.tilesetUid : null,
+			true,
+			"Use default editor visual",
+			(uid)->{
+				if( uid!=null )
+					curEntity.uiTileRect = { tilesetUid: uid, x: 0, y: 0, w: 0, h:0, }
+				else
+					curEntity.uiTileRect = null;
+				editor.ge.emit(EntityDefChanged);
+			}
+		);
+		var jUiTilePickerWrapper = jEntityForm.find(".uiTilePicker").empty();
+		if( curEntity.uiTileRect!=null ) {
+			var jPicker = JsTools.createTileRectPicker(
+				curEntity.uiTileRect.tilesetUid,
+				curEntity.uiTileRect.w>0 ? curEntity.uiTileRect : null,
+				(rect)->{
+					if( rect!=null ) {
+						curEntity.uiTileRect = rect;
+						editor.ge.emit(EntityDefChanged);
+					}
+				}
+			);
+			jUiTilePickerWrapper.append( jPicker );
+		}
+
+
 		// Max count
 		var i = Input.linkToHtmlInput(curEntity.maxCount, jEntityForm.find("input#maxCount") );
 		i.setBounds(0,1024);
@@ -493,6 +535,17 @@ class EditEntityDefs extends ui.modal.Panel {
 		// Export to table of content
 		var i = Input.linkToHtmlInput(curEntity.exportToToc, jEntityForm.find("#exportToToc"));
 		i.linkEvent(EntityDefChanged);
+		i.onChange = ()->{
+			for(fd in curEntity.fieldDefs)
+				if( fd.exportToToc ) {
+					fd.exportToToc = false;
+					editor.ge.emit(FieldDefChanged(fd));
+				}
+		}
+
+		// Out-of-bounds policy
+		var i = Input.linkToHtmlInput(curEntity.allowOutOfBounds, jEntityForm.find("#allowOutOfBounds"));
+		i.linkEvent(EntityDefChanged);
 
 		// Pivot
 		var jPivots = jEntityForm.find(".pivot");
@@ -510,6 +563,7 @@ class EditEntityDefs extends ui.modal.Panel {
 		jPivots.append(p);
 
 		checkBackup();
+		JsTools.parseComponents(jEntityForm);
 	}
 
 
@@ -528,7 +582,7 @@ class EditEntityDefs extends ui.modal.Panel {
 		jEntityList.empty();
 
 		// List context menu
-		ContextMenu.addTo(jEntityList, false, [
+		ContextMenu.attachTo(jEntityList, false, [
 			{
 				label: L._Paste(),
 				cb: ()->{
@@ -545,39 +599,22 @@ class EditEntityDefs extends ui.modal.Panel {
 		for( group in tagGroups ) {
 			// Tag name
 			if( tagGroups.length>1 ) {
-				var jSep = new J('<li class="title fixed collapser"/>');
+				var jSep = new J('<li class="title collapser"/>');
 				jSep.text( group.tag==null ? L._Untagged() : group.tag );
 				jSep.attr("id", project.iid+"_entity_tag_"+group.tag);
 				jSep.attr("default", "open");
 				jSep.appendTo(jEntityList);
 
-				// Rename
-				if( group.tag!=null ) {
-					var jLinks = new J('<div class="links"> <a> <span class="icon edit"></span> </a> </div>');
-					jSep.append(jLinks);
-					TagEditor.attachRenameAction( jLinks.find("a"), group.tag, (t)->{
-						for(ed in project.defs.entities) {
-							ed.tags.rename(group.tag, t);
-							for(fd in ed.fieldDefs)
-								fd.allowedRefTags.rename(group.tag, t);
-						}
-						for(ld in project.defs.layers) {
-							ld.requiredTags.rename(group.tag, t);
-							ld.excludedTags.rename(group.tag, t);
-						}
-						editor.ge.emit( EntityDefChanged );
-					});
-				}
 			}
 
 			// Create sub list
 			var jLi = new J('<li class="subList"/>');
 			jLi.appendTo(jEntityList);
-			var jSubList = new J('<ul/>');
+			var jSubList = new J('<ul class="niceList compact"/>');
 			jSubList.appendTo(jLi);
 
 			for(ed in group.all) {
-				var jEnt = new J('<li class="iconLeft"/>');
+				var jEnt = new J('<li class="iconLeft draggable"/>');
 				jEnt.appendTo(jSubList);
 				jEnt.attr("uid", ed.uid);
 				jEnt.css("background-color", dn.Col.fromInt(ed.color).toCssRgba(0.2));
@@ -596,37 +633,28 @@ class EditEntityDefs extends ui.modal.Panel {
 					jEnt.css( "color", C.intToHex( C.toWhite(ed.color, 0.5) ) );
 
 				// Menu
-				ContextMenu.addTo(jEnt, [
-					{
-						label: L._Copy(),
-						cb: ()->App.ME.clipboard.copyData(CEntityDef, ed.toJson(project)),
-					},
-					{
-						label: L._Cut(),
-						cb: ()->{
+				ContextMenu.attachTo_new(jEnt, (ctx:ContextMenu)->{
+					ctx.addElement( Ctx_CopyPaster({
+						elementName: "entity",
+						clipType: CEntityDef,
+						copy: ()->App.ME.clipboard.copyData(CEntityDef, ed.toJson(project)),
+						cut: ()->{
 							App.ME.clipboard.copyData(CEntityDef, ed.toJson(project));
 							deleteEntityDef(ed);
 						},
-					},
-					{
-						label: L._PasteAfter(),
-						cb: ()->{
+						paste: ()->{
 							var copy = project.defs.pasteEntityDef(App.ME.clipboard, ed);
 							editor.ge.emit(EntityDefAdded);
 							selectEntity(copy);
 						},
-						enable: ()->App.ME.clipboard.is(CEntityDef),
-					},
-					{
-						label: L._Duplicate(),
-						cb:()->{
+						duplicate: ()->{
 							var copy = project.defs.duplicateEntityDef(ed);
 							editor.ge.emit(EntityDefAdded);
 							selectEntity(copy);
-						}
-					},
-					{ label: L._Delete(), cb:deleteEntityDef.bind(ed) },
-				]);
+						},
+						delete: ()->deleteEntityDef(ed),
+					}) );
+				});
 
 				// Click
 				jEnt.click( function(_) selectEntity(ed) );
@@ -642,7 +670,7 @@ class EditEntityDefs extends ui.modal.Panel {
 				var moved = project.defs.sortEntityDef(fromIdx, toIdx);
 				selectEntity(moved);
 				editor.ge.emit(EntityDefSorted);
-			});
+			}, { onlyDraggables:true });
 		}
 
 		JsTools.parseComponents(jEntityList);

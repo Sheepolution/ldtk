@@ -4,20 +4,28 @@ import sortablejs.*;
 import sortablejs.Sortable;
 import js.node.Fs;
 
+typedef InternalSortableOptions = {
+	var ?onlyDraggables: Bool;
+	var ?disableAnim: Bool;
+}
+
 class JsTools {
 
 	/**
 		Use SortableJS to make some list sortable
 		See: https://github.com/SortableJS/Sortable
 	**/
-	public static function makeSortable(jSortable:js.jquery.JQuery, ?jScrollRoot:js.jquery.JQuery, ?group:String, anim=true, onSort:(event:SortableDragEvent)->Void) {
+	public static function makeSortable(jSortable:js.jquery.JQuery, ?jScrollRoot:js.jquery.JQuery, ?group:String, onSort:(event:SortableDragEvent)->Void, ?extraOptions:InternalSortableOptions) {
+		if( extraOptions==null )
+			extraOptions = {}
+
 		if( jSortable.length!=1 )
 			throw "Used sortable on a set of "+jSortable.length+" element(s)";
 
 		jSortable.addClass("sortable");
 
 		// Base settings
-		var settings : SortableOptions = {
+		var options : SortableOptions = {
 			onStart: function(ev) {
 				App.ME.jBody.addClass("sorting");
 				jSortable.addClass("sorting");
@@ -38,30 +46,50 @@ class JsTools {
 			scroll: jScrollRoot!=null ? jScrollRoot.get(0) : jSortable.get(0),
 			scrollSpeed: 40,
 			scrollSensitivity: 140,
-			filter: ".fixed",
-			animation: anim ? 100 : 0,
+			animation: extraOptions.disableAnim==true ? 0 : 100,
 		}
 
 		// Custom handle
 		if( jSortable.children().children(".sortHandle").length>0 ) {
-			settings.handle = ".sortHandle";
+			options.handle = ".sortHandle";
 			jSortable.addClass("customHandle");
 		}
 
-		Sortable.create( jSortable.get(0), settings);
+		// Extra options
+		if( extraOptions.onlyDraggables==true ) {
+			jSortable.addClass("onlyDraggables");
+			options.draggable = ".draggable";
+		}
+
+		Sortable.create( jSortable.get(0), options);
 	}
 
 
-	public static function createValuesSelect<T>(?jSelect:js.jquery.JQuery, cur:T, allValues:Array<T>, ?def:T, ?printer:T->String, onSelect:T->Void) {
+	public static function createValuesSelect<T>(?jSelect:js.jquery.JQuery, cur:Null<T>, allValues:Array<T>, allowNull:Bool, ?def:T, ?printer:T->String, onSelect:T->Void) {
 		if( jSelect==null )
 			jSelect = new J('<select/>');
-		else
+		else {
 			jSelect.empty().off();
+			jSelect.removeClass("isNull");
+		}
 
 		// Ensure cur is part of allValues
 		if( !allValues.contains(cur) )
 			cur = def;
 
+		// "None" option
+		if( allowNull ) {
+			var jOpt = new J("<option/>");
+			jSelect.prepend(jOpt);
+			jOpt.text( printer==null ? Lang.t._("(none)") : printer(null) );
+			jOpt.attr("value", "");
+			if( cur==null ) {
+				jSelect.addClass("isNull");
+				jOpt.attr("selected","selected");
+			}
+		}
+
+		// Values
 		var i = 0;
 		for(v in allValues) {
 			var jOpt = new J('<option value="$i"/>');
@@ -245,82 +273,151 @@ class JsTools {
 	}
 
 
-	public static function createEntityPreview(project:data.Project, ed:data.def.EntityDef, sizePx=24) {
+	public static function createEntityPreview(project:data.Project, ed:data.def.EntityDef, sizePx=32) {
 		var jWrapper = new J('<div class="entityPreview icon"></div>');
 		jWrapper.css("width", sizePx+"px");
 		jWrapper.css("height", sizePx+"px");
 
-		var scale = sizePx / M.fmax(ed.width, ed.height);
-
-		var jCanvas = new J('<canvas></canvas>');
-		jCanvas.appendTo(jWrapper);
-		jCanvas.attr("width", ed.width*scale);
-		jCanvas.attr("height", ed.height*scale);
-
-		var cnv = Std.downcast( jCanvas.get(0), js.html.CanvasElement );
-		var ctx = cnv.getContext2d();
-
-		switch ed.renderMode {
-			case Rectangle:
-				ctx.fillStyle = C.intToHex(ed.color);
-				ctx.fillRect(0, 0, ed.width*scale, ed.height*scale);
-
-			case Cross:
-				ctx.strokeStyle = C.intToHex(ed.color);
-				ctx.lineWidth = 5 * js.Browser.window.devicePixelRatio;
-				ctx.moveTo(0,0);
-				ctx.lineTo(ed.width*scale, ed.height*scale);
-				ctx.moveTo(0,ed.height*scale);
-				ctx.lineTo(ed.width*scale, 0);
-				ctx.stroke();
-
-			case Ellipse:
-				ctx.fillStyle = C.intToHex(ed.color);
-				ctx.beginPath();
-				ctx.ellipse(
-					ed.width*0.5*scale, ed.height*0.5*scale,
-					ed.width*0.5*scale, ed.height*0.5*scale,
-					0, 0, M.PI*2
-				);
-				ctx.fill();
-
-			case Tile:
-				ctx.fillStyle = C.intToHex(ed.color)+"66";
-				ctx.beginPath();
-				ctx.rect(0, 0, Std.int(ed.width*scale), Std.int(ed.height*scale));
-				ctx.fill();
-
-				if( ed.isTileDefined() ) {
-					var td = project.defs.getTilesetDef(ed.tilesetId);
-					var x = 0;
-					var y = 0;
-					var scaleX = 1.;
-					var scaleY = 1.;
-					switch ed.tileRenderMode {
-						case Stretch:
-							scaleX = scale * ed.width / td.tileGridSize;
-							scaleY = scale * ed.height / td.tileGridSize;
-
-						case FitInside:
-							var s = M.fmin(scale * ed.width / td.tileGridSize, scale * ed.height / td.tileGridSize);
-							scaleX = s;
-							scaleY = s;
-
-						case Cover, Repeat:
-							var s = M.fmin(scale * ed.width / td.tileGridSize, scale * ed.height / td.tileGridSize);
-							scaleX = s;
-							scaleY = s;
-
-						case FullSizeCropped:
-						case FullSizeUncropped:
-
-						case NineSlice:
-							scaleX = scale * ed.width / td.tileGridSize; // TODO
-							scaleY = scale * ed.height / td.tileGridSize;
-					}
-					td.drawTileRectToCanvas(jCanvas, ed.tileRect, x,y, scaleX, scaleY);
-				}
+		if( ed.uiTileRect!=null && ed.uiTileRect.w>0 ) {
+			// Alt custom UI tile
+			var td = project.defs.getTilesetDef(ed.uiTileRect.tilesetUid);
+			if( td!=null ) {
+				var jImg = td.createTileHtmlImageFromRect(ed.uiTileRect);
+				jWrapper.append(jImg);
+			}
 		}
+		else if( ed.renderMode==Tile && ed.tileRect!=null ) {
+			// Tile
+			var td = project.defs.getTilesetDef(ed.tileRect.tilesetUid);
+			if( td!=null ) {
+				var jImg = td.createTileHtmlImageFromRect(ed.tileRect);
+				jWrapper.append(jImg);
+				jImg.css("opacity", ed.tileOpacity);
+			}
+			if( ed.lineOpacity>0 ) {
+				jWrapper.addClass("hasBg");
+				jWrapper.css("outline", "1px solid "+new dn.Col(ed.color).toCssRgba(ed.lineOpacity));
+			}
+			if( ed.fillOpacity>0 ) {
+				jWrapper.addClass("hasBg");
+				jWrapper.css("background-color", new dn.Col(ed.color).toCssRgba(ed.fillOpacity));
+			}
+		}
+		else {
+			// Shape
+			var superScale = 3;
+			var scaledSizePx = sizePx * superScale;
+			var padPct = 0.05;
+			var pad = M.round( scaledSizePx*padPct );
+			var shapeWid = scaledSizePx * (1-padPct*2) * ( ed.width>ed.height ? 1 : ed.width/ed.height );
+			var shapeHei = scaledSizePx * (1-padPct*2) * ( ed.height>ed.width ? 1 : ed.height/ed.width );
+			var jCanvas = new J('<canvas></canvas>');
+			jCanvas.appendTo(jWrapper);
+			jCanvas.attr("width", scaledSizePx);
+			jCanvas.attr("height", scaledSizePx);
+
+			var cnv = Std.downcast( jCanvas.get(0), js.html.CanvasElement );
+			var ctx = cnv.getContext2d();
+
+			ctx.fillStyle = new dn.Col(ed.color).toCssRgba(ed.fillOpacity);
+			ctx.strokeStyle = new dn.Col(ed.color).toCssRgba(ed.lineOpacity);
+			ctx.lineWidth = 2/superScale;
+
+			switch ed.renderMode {
+				case Rectangle:
+					ctx.fillRect(scaledSizePx*0.5-shapeWid*0.5, scaledSizePx*0.5-shapeHei*0.5, shapeWid, shapeHei);
+					ctx.strokeRect(scaledSizePx*0.5-shapeWid*0.5, scaledSizePx*0.5-shapeHei*0.5, shapeWid, shapeHei);
+
+				case Ellipse:
+					ctx.beginPath();
+					ctx.ellipse(
+						scaledSizePx*0.5, scaledSizePx*0.5,
+						shapeWid*0.5, shapeHei*0.5,
+						0, 0, M.PI*2
+					);
+					ctx.fill();
+					ctx.stroke();
+
+				case Cross:
+					ctx.lineWidth = 3;
+					ctx.moveTo(scaledSizePx*0.5-shapeWid*0.5, scaledSizePx*0.5-shapeHei*0.5);
+					ctx.lineTo(scaledSizePx*0.5+shapeWid*0.5, scaledSizePx*0.5+shapeHei*0.5);
+					ctx.moveTo(scaledSizePx*0.5+shapeWid*0.5, scaledSizePx*0.5-shapeHei*0.5);
+					ctx.lineTo(scaledSizePx*0.5-shapeWid*0.5, scaledSizePx*0.5+shapeHei*0.5);
+					ctx.stroke();
+
+				case Tile: // N/A
+			}
+		}
+
+		// var scale = sizePx / M.fmax(ed.width, ed.height);
+
+		// var jCanvas = new J('<canvas></canvas>');
+		// jCanvas.appendTo(jWrapper);
+		// jCanvas.attr("width", ed.width*scale);
+		// jCanvas.attr("height", ed.height*scale);
+
+		// var cnv = Std.downcast( jCanvas.get(0), js.html.CanvasElement );
+		// var ctx = cnv.getContext2d();
+
+		// if( ed.uiTileRect!=null && ed.uiTileRect.w>0 ) {
+		// 	// Custom override UI tile
+		// 	var td = project.defs.getTilesetDef(ed.uiTileRect.tilesetUid);
+		// 	ctx.fillStyle = C.intToHex(ed.color)+"88";
+		// 	ctx.beginPath();
+		// 	ctx.rect(0, 0, Std.int(ed.width*scale), Std.int(ed.height*scale));
+		// 	ctx.fill();
+		// 	var s = M.fmin(scale * ed.width/td.tileGridSize, scale * ed.height/td.tileGridSize);
+		// 	td.drawTileRectToCanvas(jCanvas, ed.uiTileRect, 0,0, s,s);
+		// }
+		// else {
+		// 	// Default editor visual
+		// 	switch ed.renderMode {
+		// 		case Rectangle:
+
+		// 		case Cross:
+
+		// 		case Ellipse:
+
+		// 		case Tile:
+		// 			ctx.fillStyle = C.intToHex(ed.color)+"66";
+		// 			ctx.beginPath();
+		// 			ctx.rect(0, 0, Std.int(ed.width*scale), Std.int(ed.height*scale));
+		// 			ctx.fill();
+
+		// 			if( ed.isTileDefined() ) {
+		// 				var td = project.defs.getTilesetDef(ed.tilesetId);
+		// 				var x = 0;
+		// 				var y = 0;
+		// 				var scaleX = 1.;
+		// 				var scaleY = 1.;
+		// 				switch ed.tileRenderMode {
+		// 					case Stretch:
+		// 						scaleX = scale * ed.width / td.tileGridSize;
+		// 						scaleY = scale * ed.height / td.tileGridSize;
+
+		// 					case FitInside:
+		// 						var s = M.fmin(scale * ed.width / td.tileGridSize, scale * ed.height / td.tileGridSize);
+		// 						scaleX = s;
+		// 						scaleY = s;
+
+		// 					case Cover, Repeat:
+		// 						var s = M.fmin(scale * ed.width / td.tileGridSize, scale * ed.height / td.tileGridSize);
+		// 						scaleX = s;
+		// 						scaleY = s;
+
+		// 					case FullSizeCropped:
+		// 					case FullSizeUncropped:
+
+		// 					case NineSlice:
+		// 						scaleX = scale * ed.width / td.tileGridSize; // TODO
+		// 						scaleY = scale * ed.height / td.tileGridSize;
+		// 				}
+		// 				td.drawTileRectToCanvas(jCanvas, ed.tileRect, x,y, scaleX, scaleY);
+		// 			}
+		// 	}
+		// }
+
 
 		return jWrapper;
 	}
@@ -526,10 +623,15 @@ class JsTools {
 							case k.charAt(k.length-1) => ")": new J("<span/>").append(k);
 
 							case _:
-								var jKey = new J('<span class="key">${k.toUpperCase()}</span>');
+								var keyName = switch k {
+									case "macctrl": "ctrl";
+									case _: k.toUpperCase();
+								}
+								var jKey = new J('<span class="key">$keyName</span>');
 								switch k.toLowerCase() {
 									case "shift", "alt" : jKey.addClass( k.toLowerCase() );
-									case "ctrl" : jKey.addClass( App.isMac() ? 'meta' : k.toLowerCase() );
+									case "macctrl" : jKey.addClass( App.isMac() ? "ctrl" : "??" );
+									case "ctrl" : jKey.addClass( App.isMac() ? 'meta' : "ctrl" );
 									case "delete", "escape": jKey.addClass("special");
 									case _ if(funcKeyReg.match(k)): jKey.addClass("special");
 									case _:
@@ -544,11 +646,14 @@ class JsTools {
 			}
 		});
 
-		jTarget.empty().append( jReplace.contents() );
+		return jReplace.contents();
 	}
 
 
 	public static function parseComponents(jCtx:js.jquery.JQuery) : Void {
+		// Disable img dragging
+		jCtx.find("img").attr("draggable","false");
+
 		// Info bubbles: (i) and (!)
 		jCtx.find(".info, info, warning").each( function(idx, e) {
 			var jThis = new J(e);
@@ -619,7 +724,7 @@ class JsTools {
 
 					case 2:
 						var ctx = new ui.modal.ContextMenu(ev);
-						ctx.add({
+						ctx.addAction({
 							label: L.t._("Copy URL"),
 							cb: ()->{
 								App.ME.clipboard.copyStr(url);
@@ -1002,7 +1107,7 @@ class JsTools {
 
 	public static function createTilePicker(
 		tilesetId: Null<Int>,
-		selectMode: TilesetSelectionMode=Free,
+		selectMode: TilesetSelectionMode=MultipleIndividuals,
 		tileIds: Array<Int>,
 		useSavedSelections=true,
 		onPick: (tileIds:Array<Int>)->Void
@@ -1012,18 +1117,24 @@ class JsTools {
 		if( tilesetId!=null ) {
 			jTileCanvas.addClass("active");
 			var td = Editor.ME.project.defs.getTilesetDef(tilesetId);
+			var isRectMode = switch selectMode {
+				case None: false;
+				case MultipleIndividuals: false;
+				case OneTile, OneTileAndClose: false;
+				case TileRect, TileRectAndClose: true;
+			}
 
 			if( tileIds.length==0 ) {
 				// No tile selected
 				jTileCanvas.addClass("empty");
 			}
-			else if( selectMode!=RectOnly ) {
+			else if( !isRectMode ) {
 				// Single/random tiles
 				jTileCanvas.removeClass("empty");
 				jTileCanvas.attr("width", td.tileGridSize);
 				jTileCanvas.attr("height", td.tileGridSize);
 				td.drawTileToCanvas(jTileCanvas, tileIds[0]);
-				if( tileIds.length>1 && selectMode!=RectOnly ) {
+				if( tileIds.length>1 && !isRectMode ) {
 					// Cycling animation among multiple tiles
 					jTileCanvas.addClass("multi");
 					var idx = 0;
@@ -1065,23 +1176,7 @@ class JsTools {
 
 			// Open picker
 			jTileCanvas.click( function(ev) {
-				var m = new ui.Modal();
-				m.addClass("singleTilePicker");
-
-				var tp = new ui.Tileset(m.jContent, td, selectMode);
-				tp.useSavedSelections = useSavedSelections;
-				tp.setSelectedTileIds(tileIds);
-				tp.onClickOutOfBounds = m.close;
-				if( selectMode==PickAndClose )
-					tp.onSelectAnything = ()->{
-						onPick([ tp.getSelectedTileIds()[0] ]);
-						m.close();
-					}
-				else
-					m.onCloseCb = function() {
-						onPick( tp.getSelectedTileIds() );
-					}
-				tp.focusOnSelection(true);
+				openTilePickerModal(td.uid, selectMode, tileIds, false, onPick);
 			});
 		}
 		else {
@@ -1090,6 +1185,64 @@ class JsTools {
 		}
 
 		return jTileCanvas;
+	}
+
+
+	public static function openTilePickerModal(
+		tilesetId: Null<Int>,
+		selectMode: TilesetSelectionMode,
+		tileIds: Array<Int>,
+		useSavedSelections=true,
+		onPick: (tileIds:Array<Int>)->Void
+	) {
+		var td = Editor.ME.project.defs.getTilesetDef(tilesetId);
+		if( td==null ) {
+			N.error("No valid tileset");
+			return false;
+		}
+
+		var m = new ui.Modal();
+		m.addClass("singleTilePicker");
+
+		var tp = new ui.Tileset(m.jContent, td, selectMode);
+		tp.useSavedSelections = useSavedSelections;
+		tp.setSelectedTileIds(tileIds);
+		tp.onClickOutOfBounds = m.close;
+		tp.onSelectAnything = ()->{
+			switch selectMode {
+				case None:
+				case MultipleIndividuals:
+				case OneTile:
+				case TileRect:
+
+				case OneTileAndClose:
+					onPick([ tp.getSelectedTileIds()[0] ]);
+					m.close();
+
+				case TileRectAndClose:
+					onPick( tp.getSelectedTileIds() );
+					m.close();
+			}
+		}
+		m.onCloseCb = function() {
+			switch selectMode {
+				case None:
+				case OneTileAndClose:
+				case TileRectAndClose:
+
+				case OneTile:
+					onPick([ tp.getSelectedTileIds()[0] ]);
+
+				case MultipleIndividuals:
+					onPick( tp.getSelectedTileIds() );
+
+				case TileRect:
+					onPick( tp.getSelectedTileIds() );
+			}
+		}
+		tp.focusOnSelection(true);
+
+		return true;
 	}
 
 
@@ -1103,47 +1256,45 @@ class JsTools {
 		var jTileCanvas = new J('<canvas class="tile"></canvas>');
 
 		if( tilesetId!=null ) {
-			if( active )
-				jTileCanvas.addClass("active");
-
 			var td = Editor.ME.project.defs.getTilesetDef(tilesetId);
-
-			if( cur==null ) {
-				// No tile selected
+			if( td==null )
 				jTileCanvas.addClass("empty");
-			}
 			else {
-				// Tile rect
-				jTileCanvas.attr("width", cur.w);
-				jTileCanvas.attr("height", cur.h);
-				var scale = 35 / M.fmax(cur.w, cur.h);
-				jTileCanvas.css("width", cur.w * scale );
-				jTileCanvas.css("height", cur.h * scale );
-				td.drawTileRectToCanvas(jTileCanvas, cur);
+				if( active )
+					jTileCanvas.addClass("active");
+
+				if( cur==null ) {
+					// No tile selected
+					jTileCanvas.addClass("empty");
+				}
+				else {
+					// Tile rect
+					jTileCanvas.attr("width", cur.w);
+					jTileCanvas.attr("height", cur.h);
+					var scale = 35 / M.fmax(cur.w, cur.h);
+					jTileCanvas.css("width", cur.w * scale );
+					jTileCanvas.css("height", cur.h * scale );
+					td.drawTileRectToCanvas(jTileCanvas, cur);
+				}
+				ui.Tip.attach(jTileCanvas, "Use LEFT click to pick a tile or RIGHT click to remove it.");
+
+				// Open picker
+				if( active )
+					jTileCanvas.mousedown( (ev:js.jquery.Event)->{
+						switch ev.button {
+							case 0:
+								var tileIds = cur==null ? [] : td.getTileIdsFromRect(cur);
+								openTilePickerModal(td.uid, TileRectAndClose, tileIds, false, (tids)->{
+									var rect = td.getTileRectFromTileIds(tids);
+									onPick(rect);
+								});
+
+							case _:
+								onPick(null);
+						}
+					});
 			}
-			ui.Tip.attach(jTileCanvas, "Use LEFT click to pick a tile or RIGHT click to remove it.");
 
-			// Open picker
-			if( active )
-				jTileCanvas.mousedown( (ev:js.jquery.Event)->{
-					switch ev.button {
-						case 0:
-							var m = new ui.Modal();
-							m.addClass("singleTilePicker");
-
-							var tp = new ui.Tileset(m.jContent, td, RectOnly);
-							tp.useSavedSelections = false;
-							tp.setSelectedRect(cur);
-							tp.onSelectAnything = ()->{
-								onPick( tp.getSelectedRect() );
-								m.close();
-							}
-							tp.focusOnSelection(true);
-
-						case _:
-							onPick(null);
-					}
-				});
 		}
 		else {
 			// Invalid tileset
@@ -1231,9 +1382,9 @@ class JsTools {
 			jRecall.appendTo(jWrapper);
 			jRecall.click( (ev:js.jquery.Event)->{
 				var ctx = new ui.modal.ContextMenu();
-				ctx.positionNear(jRecall);
+				ctx.setAnchor( MA_JQuery(jRecall) );
 				for( img in allImages )
-					ctx.add({
+					ctx.addAction({
 						label: L.untranslated(img.fileName),
 						cb: ()->_pick(img.relPath)
 					});
@@ -1302,17 +1453,20 @@ class JsTools {
 	}
 
 
-	public static function createIntGridValue(project:data.Project, ?iv:data.DataTypes.IntGridValueDefEditor, ?rawIv:ldtk.Json.IntGridValueDef) : js.jquery.JQuery {
+	public static function createIntGridValue(project:data.Project, ?iv:data.DataTypes.IntGridValueDefEditor, ?rawIv:ldtk.Json.IntGridValueDef, showInt=true) : js.jquery.JQuery {
 		if( iv==null )
 			iv = {
 				identifier: rawIv.identifier,
 				value: rawIv.value,
 				color: dn.Col.parseHex(rawIv.color),
 				tile: rawIv.tile,
+				groupUid: 0,
 			}
 
 		var jVal = new J('<div class="intGridValue"></div>');
-		jVal.append('<span class="index">${iv.value}</span>');
+		if( showInt )
+			jVal.append('<span class="index">${iv.value}</span>');
+
 		jVal.css({
 			color: C.intToHex( iv.color.toWhite(0.5) ),
 			borderColor: C.intToHex( iv.color.toWhite(0.2) ),
@@ -1321,10 +1475,11 @@ class JsTools {
 		if( iv.tile!=null ) {
 			jVal.addClass("hasIcon");
 			jVal.append( project.resolveTileRectAsHtmlImg(iv.tile) );
-			jVal.find(".index").css({
-				color: iv.color.getAutoContrastCustom(0.4).toHex(),
-				backgroundColor: iv.color.toHex(),
-			});
+			if( showInt )
+				jVal.find(".index").css({
+					color: iv.color.getAutoContrastCustom(0.4).toHex(),
+					backgroundColor: iv.color.toHex(),
+				});
 		}
 		return jVal;
 	}

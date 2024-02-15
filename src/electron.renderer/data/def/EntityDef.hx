@@ -11,6 +11,7 @@ class EntityDef {
 	public var identifier(default,set) : String;
 	public var tags : Tags;
 	public var exportToToc : Bool;
+	public var allowOutOfBounds : Bool;
 	public var doc: Null<String>;
 
 	public var width : Int;
@@ -25,6 +26,7 @@ class EntityDef {
 	public var nineSliceBorders : Array<Int>;
 	public var tilesetId : Null<Int>;
 	public var tileRect : Null<ldtk.Json.TilesetRect>;
+	public var uiTileRect : Null<ldtk.Json.TilesetRect>;
 	public var _oldTileId : Null<Int>;
 
 	public var hollow : Bool;
@@ -69,6 +71,7 @@ class EntityDef {
 		hollow = false;
 		tags = new Tags();
 		exportToToc = false;
+		allowOutOfBounds = false;
 	}
 
 	public function isTileDefined() {
@@ -159,6 +162,7 @@ class EntityDef {
 
 		o.tags = Tags.fromJson(json.tags);
 		o.exportToToc = JsonTools.readBool( json.exportToToc, false );
+		o.allowOutOfBounds = JsonTools.readBool( json.allowOutOfBounds, false );
 
 		o.color = JsonTools.readColor( json.color, 0x0 );
 		o.tileOpacity = JsonTools.readFloat( json.tileOpacity, 1 );
@@ -171,6 +175,7 @@ class EntityDef {
 		o.tileRect = JsonTools.readTileRect(json.tileRect, true);
 		if( o.tileRect!=null && o.tileRect.tilesetUid==null )
 			o.tileRect.tilesetUid = o.tilesetId;
+		o.uiTileRect = JsonTools.readTileRect(json.uiTileRect, true);
 
 		if( (cast json.tileRenderMode)=="Crop" ) json.tileRenderMode = cast "Cover";
 		o.tileRenderMode = JsonTools.readEnum(ldtk.Json.EntityTileRenderMode, json.tileRenderMode, false, FitInside);
@@ -199,6 +204,7 @@ class EntityDef {
 			uid: uid,
 			tags: tags.toJson(),
 			exportToToc: exportToToc,
+			allowOutOfBounds: allowOutOfBounds,
 			doc: JsonTools.escapeNullableString(doc),
 
 			width: width,
@@ -222,6 +228,7 @@ class EntityDef {
 			tilesetId: tilesetId,
 			tileRenderMode: JsonTools.writeEnum(tileRenderMode, false),
 			tileRect: JsonTools.writeTileRect(tileRect),
+			uiTileRect: JsonTools.writeTileRect(uiTileRect),
 			nineSliceBorders: tileRenderMode==NineSlice ? nineSliceBorders.copy() : [],
 
 			maxCount: maxCount,
@@ -306,24 +313,7 @@ class EntityDef {
 			renderMode = Rectangle;
 		}
 
-		// Remove Enum-based field defs whose EnumDef is lost
-		var i = 0;
-		while( i<fieldDefs.length ) {
-			var fd = fieldDefs[i];
-			switch fd.type {
-				case F_Enum(enumDefUid):
-					if( p.defs.getEnumDef(enumDefUid)==null ) {
-						App.LOG.add("tidy", 'Removed lost enum field of $fd in $this');
-						fieldDefs.splice(i,1);
-						continue;
-					}
-
-				case _:
-			}
-			i++;
-		}
-
-		for(fd in fieldDefs)
-			fd.tidy(p);
+		// Field defs
+		Definitions.tidyFieldDefsArray(p, fieldDefs, this.toString());
 	}
 }

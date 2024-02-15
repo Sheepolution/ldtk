@@ -12,6 +12,7 @@ typedef IntGridValueDefEditor = {
 	var identifier : Null<String>;
 	var color : dn.Col;
 	var tile : Null<ldtk.Json.TilesetRect>;
+	var groupUid : Int;
 }
 
 enum ValueWrapper {
@@ -35,16 +36,6 @@ typedef EnumDefValue = {
 	var id : String;
 	var tileRect : Null<ldtk.Json.TilesetRect>;
 	var color: Int;
-}
-
-typedef AutoLayerRuleGroup = {
-	var uid : Int;
-	var name : String;
-	var active : Bool;
-	var collapsed : Bool;
-	var rules : Array<data.def.AutoLayerRuleDef>;
-	var isOptional : Bool;
-	var usesWizard : Bool;
 }
 
 typedef GridTileInfos = {

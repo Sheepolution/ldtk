@@ -6,6 +6,7 @@ enum GlobalEvent {
 
 	ProjectSelected;
 	ProjectSettingsChanged;
+	ProjectFlagChanged(flag:ldtk.Json.ProjectFlag, active:Bool);
 	BeforeProjectSaving;
 	ProjectSaved;
 
@@ -24,31 +25,32 @@ enum GlobalEvent {
 
 	LayerDefAdded;
 	LayerDefRemoved(defUid:Int);
-	LayerDefChanged(defUid:Int);
+	LayerDefChanged(defUid:Int, contentInvalidated:Bool);
 	LayerDefSorted;
 	LayerDefConverted;
-	LayerDefIntGridValuesSorted(defUid:Int);
+	LayerDefIntGridValueAdded(defUid:Int, valueId:Int);
+	LayerDefIntGridValuesSorted(defUid:Int, groupChanged:Bool);
 	LayerDefIntGridValueRemoved(defUid:Int, valueId:Int, isUsed:Bool);
 
 	LayerRuleChanged(rule:data.def.AutoLayerRuleDef);
 	LayerRuleAdded(rule:data.def.AutoLayerRuleDef);
-	LayerRuleRemoved(rule:data.def.AutoLayerRuleDef);
+	LayerRuleRemoved(rule:data.def.AutoLayerRuleDef, invalidates:Bool);
 	LayerRuleSeedChanged;
 	LayerRuleSorted;
 
-	LayerRuleGroupAdded(rg:data.DataTypes.AutoLayerRuleGroup);
-	LayerRuleGroupRemoved(rg:data.DataTypes.AutoLayerRuleGroup);
-	LayerRuleGroupChanged(rg:data.DataTypes.AutoLayerRuleGroup);
-	LayerRuleGroupChangedActiveState(rg:data.DataTypes.AutoLayerRuleGroup);
+	LayerRuleGroupAdded(rg:data.def.AutoLayerRuleGroupDef);
+	LayerRuleGroupRemoved(rg:data.def.AutoLayerRuleGroupDef);
+	LayerRuleGroupChanged(rg:data.def.AutoLayerRuleGroupDef);
+	LayerRuleGroupChangedActiveState(rg:data.def.AutoLayerRuleGroupDef);
 	LayerRuleGroupSorted;
-	LayerRuleGroupCollapseChanged(rg:data.DataTypes.AutoLayerRuleGroup);
+	LayerRuleGroupCollapseChanged(rg:data.def.AutoLayerRuleGroupDef);
 
-	LayerInstanceSelected;
+	LayerInstanceSelected(li:data.inst.LayerInstance);
 	LayerInstanceEditedByTool(li:data.inst.LayerInstance);
 	LayerInstanceChangedGlobally(li:data.inst.LayerInstance);
 	LayerInstanceVisiblityChanged(li:data.inst.LayerInstance);
 	LayerInstancesRestoredFromHistory(lis:Array<data.inst.LayerInstance>);
-	AutoLayerRenderingChanged;
+	AutoLayerRenderingChanged(lis:Array<data.inst.LayerInstance>);
 	LayerInstanceTilesetChanged(li:data.inst.LayerInstance);
 
 	TilesetImageLoaded(td:data.def.TilesetDef, isInitial:Bool);
@@ -184,10 +186,11 @@ enum ImageLoadingResult {
 
 enum TilesetSelectionMode {
 	None;
-	PickAndClose;
-	PickSingle;
-	Free;
-	RectOnly;
+	MultipleIndividuals;
+	OneTile;
+	OneTileAndClose;
+	TileRect;
+	TileRectAndClose;
 }
 
 enum TilePickerDisplayMode {
@@ -222,4 +225,88 @@ enum ClipboardType {
 typedef CachedIID = {
 	var level: data.Level;
 	var ?ei: data.inst.EntityInstance ;
+}
+
+
+enum ModalAnchor {
+	MA_Free;
+	MA_Centered;
+	MA_JQuery(je:js.jquery.JQuery);
+	MA_Coords(m:Coords);
+}
+
+
+typedef KeyBinding = {
+	var jsDisplayText : String;
+	var keyCode : Int;
+	var jsKey : String;
+	var ctrlCmd : Bool;
+	var macCtrl : Bool;
+	var shift : Bool;
+	var alt : Bool;
+
+	var navKeys : Null<Settings.NavigationKeys>;
+	var os : Null<String>;
+	var debug: Bool;
+
+	var allowInInputs : Bool;
+
+	var command : AppCommand;
+}
+
+enum AppCommand {
+	@k("ctrl s") @input C_SaveProject;
+	@k("ctrl shift s") @input C_SaveProjectAs;
+	@k("ctrl W") @input C_CloseProject;
+	C_RenameProject;
+
+	@k("escape") @input C_Back;
+	@k("f12") @input C_AppSettings;
+	@k("ctrl z") C_Undo;
+	@k("ctrl y") C_Redo;
+	@k("ctrl a") C_SelectAll;
+	@k("tab") C_ZenMode;
+	@k("h") C_ShowHelp;
+	@k("shift w, ², `, [zqsd] w, [arrows] w") C_ToggleWorldMode;
+	@k("[debug] ctrl shift r, ctrl r") @input C_RunCommand;
+	@k("ctrl q") @input C_ExitApp;
+	@k("[mac] ctrl M") @input C_MinimizeApp;
+	@k("[mac] ctrl H") @input C_HideApp;
+	@k("[mac] ctrl macctrl F, [win] f11, ctrl shift f, [win] alt enter, [mac] ctrl enter") @input C_ToggleFullscreen;
+	@k("pagedown") C_GotoPreviousWorldLayer;
+	@k("pageup") C_GotoNextWorldLayer;
+	@k("ctrl pagedown, shift pagedown") C_MoveLevelToPreviousWorldLayer;
+	@k("ctrl pageup, shift pageup") C_MoveLevelToNextWorldLayer;
+
+	@k("p") C_OpenProjectPanel;
+	@k("l") C_OpenLayerPanel;
+	@k("e") C_OpenEntityPanel;
+	@k("u") C_OpenEnumPanel;
+	@k("t") C_OpenTilesetPanel;
+	@k("c") C_OpenLevelPanel;
+
+	@k("[zqsd] z, [wasd] w, [arrows] up") C_NavUp;
+	@k("[zqsd] s, [wasd] s, [arrows] down") C_NavDown;
+	@k("[zqsd] q, [wasd] a, [arrows] left") C_NavLeft;
+	@k("[zqsd] d, [wasd] d, [arrows] right") C_NavRight;
+
+	@k("shift r") C_ToggleAutoLayerRender;
+	@k("shift e") C_ToggleSelectEmptySpaces;
+	@k("shift t") C_ToggleTileStacking;
+	@k("[zqsd] a, [arrows] a, shift a") C_ToggleSingleLayerMode;
+	@k("[win] ctrl h, [linux] ctrl h, [mac] shift h") C_ToggleDetails;
+	@k("g") C_ToggleGrid;
+	@k("ctrl f, ctrl shift p, ctrl k, ctrl shift k") @input C_CommandPalette;
+	@k("x, shift h") C_FlipX;
+	@k("y, shift V") C_FlipY;
+	@k("r") C_ToggleTileRandomMode;
+	@k("[arrows] s, shift s") C_SaveTileSelection;
+	@k("shift l") C_LoadTileSelection;
+}
+
+
+enum DebugFlag {
+	F_MainDebug;
+	F_IntGridUseCounts;
+	F_ProjectImgCache;
 }

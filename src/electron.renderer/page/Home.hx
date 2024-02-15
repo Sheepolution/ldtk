@@ -12,9 +12,12 @@ class Home extends Page {
 
 		ME = this;
 		var changeLog = Const.getChangeLog();
+		var ver = Const.getAppVersionObj();
 		loadPageTemplate("home", {
 			app: Const.APP_NAME,
-			appVer: Const.getAppVersion(true),
+			majorVer: ver.major,
+			minorVer: ver.minor,
+			patchVer: ver.patch,
 			buildDate: dn.MacroTools.getHumanBuildDate(),
 			latestVer: changeLog.latest.version,
 			latestDesc: changeLog.latest.title==null ? L.t._("Release notes") : '"'+changeLog.latest.title+'"',
@@ -27,6 +30,10 @@ class Home extends Page {
 			email: Const.getContactEmail(),
 		});
 		App.ME.setWindowTitle();
+
+		// Hide patch version if zero
+		if( ver.patch!=0 )
+			jPage.find("header .version").addClass("patchRelease");
 
 		jPage.find(".changelogs code").each( function(idx,e) {
 			var jCode = new J(e);
@@ -55,9 +62,10 @@ class Home extends Page {
 		if( !settings.getUiStateBool(HideSamplesOnHome) )
 			showSamples(false);
 
-		jPage.find(".buy").click( (ev)->{
+		jPage.find(".support").click( (ev)->{
 			var w = new ui.Modal();
-			w.loadTemplate("buy", {
+			w.setAnchor(MA_Centered);
+			w.loadTemplate("support", {
 				app: Const.APP_NAME,
 				itchUrl: Const.ITCH_IO_BUY_URL,
 				gitHubSponsorUrl: Const.GITHUB_SPONSOR_URL,
@@ -207,17 +215,17 @@ class Home extends Page {
 				var act : ui.modal.ContextMenu.ContextActions = [
 					{
 						label: L.t._("Load from this folder"),
-						icon: "open",
+						iconId: "open",
 						cb: onLoad.bind( dn.FilePath.fromFile(filePath).directory ),
 					},
 					{
 						label: L.t._("Locate file"),
-						icon: "locate",
+						iconId: "locate",
 						cb: JsTools.locateFile.bind(filePath, true),
 					},
 					{
 						label: L.t._("Assign custom color"),
-						icon: "color",
+						iconId: "color",
 						cb: ()->{
 							var cp = new ui.modal.dialog.ColorPicker(Const.getNicePalette(), col);
 							cp.onValidate = (c)->{
@@ -229,7 +237,7 @@ class Home extends Page {
 					},
 					{
 						label: L.t._("Reset assigned color"),
-						icon: "color",
+						iconId: "color",
 						show: ()->App.ME.hasForcedDirColor(fp.directory),
 						cb: ()->{
 							App.ME.forceDirColor(fp.directory);
@@ -262,7 +270,7 @@ class Home extends Page {
 						}
 					},
 				];
-				ui.modal.ContextMenu.addTo(jLi, act );
+				ui.modal.ContextMenu.attachTo(jLi, act );
 
 				jLi.appendTo(jRecentFiles);
 			}
@@ -320,17 +328,17 @@ class Home extends Page {
 				var actions : ui.modal.ContextMenu.ContextActions = [
 					{
 						label: L.t._("New project in this folder"),
-						icon: "new",
+						iconId: "new",
 						cb: onNew.bind(fp.directory),
 					},
 					{
 						label: L.t._("Locate folder"),
-						icon: "locate",
+						iconId: "locate",
 						cb: JsTools.locateFile.bind(fp.directory, false),
 					},
 					{
 						label: L.t._("Assign custom color"),
-						icon: "color",
+						iconId: "color",
 						cb: ()->{
 							var cp = new ui.modal.dialog.ColorPicker(Const.getNicePalette(), col);
 							cp.onValidate = (c)->{
@@ -342,7 +350,7 @@ class Home extends Page {
 					},
 					{
 						label: L.t._("Reset assigned color"),
-						icon: "color",
+						iconId: "color",
 						show: ()->App.ME.hasForcedDirColor(fp.directory),
 						cb: ()->{
 							App.ME.forceDirColor(fp.directory);
@@ -365,7 +373,7 @@ class Home extends Page {
 						}
 					},
 				];
-				ui.modal.ContextMenu.addTo(jLi, actions);
+				ui.modal.ContextMenu.attachTo(jLi, actions);
 
 				jLi.appendTo(jRecentDirs);
 
@@ -392,8 +400,8 @@ class Home extends Page {
 	function onImport(ev:js.jquery.Event) {
 		var ctx = new ui.modal.ContextMenu(ev);
 		ctx.addTitle( L.t._("Import a project from another app") );
-		ctx.positionNear( new J(ev.target) );
-		ctx.add({
+		ctx.setAnchor( MA_JQuery(new J(ev.target)) );
+		ctx.addAction({
 			label: L.t._("Ogmo 3 project"),
 			cb: ()->onImportOgmo(),
 		});
@@ -499,7 +507,7 @@ class Home extends Page {
 
 		switch keyCode {
 			case K.W, K.Q:
-				if( App.ME.isCtrlDown() )
+				if( App.ME.isCtrlCmdDown() )
 					App.ME.exit();
 
 			case K.ENTER if( !ui.Modal.hasAnyOpen() ):
@@ -550,10 +558,10 @@ class Home extends Page {
 							if( b.crash )
 								crashBackups.push(b.backup);
 
-							ctx.add({
+							ctx.addAction({
 								label: ui.ProjectSaver.isCrashFile(b.backup.full) ? Lang.t._("Crash recovery"): Lang.relativeDate(b.date),
 								className: b.crash ? "crash" : null,
-								sub: Lang.date(b.date),
+								subText: Lang.date(b.date),
 								cb: ()->App.ME.loadProject(b.backup.full, (p:data.Project)->{
 									p.backupOriginalFile = pb.projectFp.clone();
 								}),
@@ -561,7 +569,7 @@ class Home extends Page {
 						}
 
 						if( crashBackups.length>0 )
-							ctx.add({
+							ctx.addAction({
 								label: L.t._("Delete all crash recovery files"),
 								className: "warning",
 								cb: ()->{

@@ -69,7 +69,8 @@ class Changelog extends ui.modal.Dialog {
 
 		// Load page
 		loadTemplate("changelog", {
-			ver: latestPatchedVer.full,
+			mainVer: latestPatchedVer.major+"."+latestPatchedVer.minor,
+			patchVer: latestPatchedVer.patch>0 ? "."+latestPatchedVer.patch : "",
 			app: Const.APP_NAME,
 			title: changeLog.title==null ? "" : '&ldquo;&nbsp;'+changeLog.title+'&nbsp;&rdquo;',
 		}, false);
@@ -107,7 +108,7 @@ class Changelog extends ui.modal.Dialog {
 			for( c in Const.getChangeLog().entries ) {
 				if( c.version.patch!=0 )
 					continue;
-				ctx.add({
+				ctx.addAction({
 					label: L.t.untranslated( '<strong>${c.version.major+"."+c.version.minor}</strong>' + ( c.title!=null ? " - "+c.title : "" ) ),
 					cb: ()->showVersion(c.version),
 				});
@@ -122,6 +123,16 @@ class Changelog extends ui.modal.Dialog {
 
 		// Call Marked parser for main changelog
 		js.Syntax.code("parseMd({0}, {1})", rawMd, "updateChangelogHtml");
+
+
+		// Images animations
+		var jImgs = jContent.find("p img");
+		jImgs.each( (idx,e)->{
+			var jImg = new J(e);
+			jImg.unwrap().wrap('<div class="imgWrapper"></div>');
+			var jShadow = new J('<div class="shadow"/>').insertAfter(jImg);
+		});
+
 
 		// Hot fixes listing
 		if( changeLog.version.patch==0 ) {
@@ -150,7 +161,7 @@ class Changelog extends ui.modal.Dialog {
 			}
 
 			// Highlight latest
-			if( changeLog.version.hasSameMajorAndMinor( Const.getAppVersion(true) ) ) {
+			if( changeLog.version.hasSameMajorAndMinor( Const.getAppVersionStr(true) ) ) {
 				jHotFixes.find(".hotfix:first").addClass("latest");
 				jHotFixes.find(".hotfix:not(:first)").addClass("collapsed");
 			}

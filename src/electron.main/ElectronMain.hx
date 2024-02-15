@@ -15,7 +15,7 @@ class ElectronMain {
 		if( settings.v.useBestGPU && !App.commandLine.hasSwitch("force_low_power_gpu") )
 			App.commandLine.appendSwitch("force_high_performance_gpu");
 
-		App.whenReady().then( (_)->createAppWindow() );
+		App.whenReady().then( (_)->showSplashWindow() );
 
 		// Mac
 		App.on('window-all-closed', function() {
@@ -24,7 +24,7 @@ class ElectronMain {
 		});
 		App.on('activate', ()->{
 			if( electron.main.BrowserWindow.getAllWindows().length == 0 )
-				createAppWindow();
+				showSplashWindow();
 		});
 
 		initIpcBindings();
@@ -52,46 +52,54 @@ class ElectronMain {
 		// *** sendSync/on *****************************************************
 	}
 
+	static function fileNotFound(file:String) {
+		electron.main.Dialog.showErrorBox("File not found", '"$file" was not found in app assets!');
+		App.quit();
+	}
 
 
-	static function createAppWindow() {
-		function _fileNotFound(file:String) {
-			electron.main.Dialog.showErrorBox("File not found", '"$file" was not found in app assets!');
-			App.quit();
-		}
+	static var splash : electron.main.BrowserWindow = null;
+	static function showSplashWindow() {
+		#if debug
 
-		// Prepare splash window
-		#if !debug
-		var splash = new electron.main.BrowserWindow({
-			width: 600,
-			height: 400,
-			alwaysOnTop: true,
-			transparent: true,
-			frame: false,
-		});
+			createMainWindow();
 
-		splash.loadFile('assets/splash.html')
-			.then( (_)->{}, (_)->_fileNotFound("splash.html") );
+		#else
+
+			splash = new electron.main.BrowserWindow({
+				width: 300,
+				height: 300,
+				alwaysOnTop: true,
+				transparent: true,
+				frame: false,
+			});
+
+			var ver = new dn.Version( MacroTools.getAppVersion() );
+
+			splash
+				.loadFile('assets/splash.html', { query:{
+					mainVersion : ver.major+"."+ver.minor,
+					patchVersion : ver.patch>0 ? "."+ver.patch : "",
+				}})
+				.then(
+					_->createMainWindow(),
+					_->fileNotFound("splash.html")
+				);
 
 		#end
 
+	}
 
-		var webPreferences:Dynamic = {
-			nodeIntegration: true,
-			contextIsolation: false
-		};
-
-		var settings:Dynamic = {
-			webPreferences: webPreferences,
+	static function createMainWindow() {
+		// Init window
+		mainWindow = new electron.main.BrowserWindow({
+			webPreferences: { nodeIntegration:true, contextIsolation:false },
 			fullscreenable: true,
 			show: false,
 			title: "LDtk",
 			icon: __dirname+"/appIcon.png",
 			backgroundColor: '#1e2229'
-		}
-
-		// Init window
-		mainWindow = new electron.main.BrowserWindow(settings);
+		});
 		mainWindow.once("ready-to-show", ev->{
 			mainWindow.webContents.setZoomFactor( settings.getAppZoomFactor() );
 			if( settings.v.startFullScreen )
@@ -102,10 +110,10 @@ class ElectronMain {
 
 		// Window menu
 		#if debug
-		enableDebugMenu();
+			enableDebugMenu();
 		#else
-		electron.main.Menu.setApplicationMenu( electron.main.Menu.buildFromTemplate( [] ) ); // macos
-		mainWindow.removeMenu(); // windows
+			// electron.main.Menu.setApplicationMenu( electron.main.Menu.buildFromTemplate( [] ) ); // macos
+			mainWindow.removeMenu(); // windows
 		#end
 
 		// Load app page
@@ -113,7 +121,7 @@ class ElectronMain {
 		#if debug
 			// Show immediately
 			mainWindow.maximize();
-			p.then( (_)->{}, (_)->_fileNotFound("app.html") );
+			p.then( (_)->{}, (_)->fileNotFound("app.html") );
 		#else
 			// Wait for loading before showing up
 			p.then( (_)->{
@@ -122,7 +130,7 @@ class ElectronMain {
 				splash.destroy();
 			}, (_)->{
 				splash.destroy();
-				_fileNotFound("app.html");
+				fileNotFound("app.html");
 			});
 		#end
 
@@ -135,6 +143,7 @@ class ElectronMain {
 		dn.js.ElectronDialogs.initMain(mainWindow);
 		dn.js.ElectronUpdater.initMain(mainWindow);
 	}
+
 
 
 	// Create a custom debug menu

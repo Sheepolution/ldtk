@@ -16,7 +16,7 @@ class NamePatternEditor {
 	var onChange : String->Void;
 	var onReset: Void->Void;
 	var blocks : Array<PatternBlock>;
-	var stocks : Array<{ k:String, name:String, ?desc:String }> = [];
+	var stocks : Array<{ k:String, displayName:String, ?desc:String }> = [];
 
 	var curInput : Null<js.jquery.JQuery>;
 	var curEditIndex : Null<Int>;
@@ -306,7 +306,8 @@ class NamePatternEditor {
 		for(s in stocks)
 			if( !usedMap.exists(s.k))
 				ctxAct.push({
-					label: L.untranslated(s.desc==null ? s.name : s.desc),
+					label: L.untranslated(s.displayName),
+					subText: L.untranslated(s.desc),
 					cb: ()->{
 						if( replaceIndex!=null ) {
 							blocks[replaceIndex] = Var(s.k);
@@ -325,7 +326,7 @@ class NamePatternEditor {
 		if( ctxAct.length>0 ) {
 			var ctx = new ui.modal.ContextMenu(jNear);
 			for(a in ctxAct)
-				ctx.add(a);
+				ctx.addAction(a);
 		}
 	}
 
@@ -347,17 +348,17 @@ class NamePatternEditor {
 				jBlock.addClass("last");
 			switch b {
 				case Empty:
-					jBlock.addClass("str empty fixed");
+					jBlock.addClass("str empty");
 
 				case Str(v):
-					jBlock.addClass("str");
+					jBlock.addClass("str draggable");
 					jBlock.append(v);
 
 				case Var(v):
-					jBlock.addClass("var");
+					jBlock.addClass("var draggable");
 					for(s in stocks)
 						if( s.k==v ) {
-							jBlock.append(s.name);
+							jBlock.append(s.displayName);
 							break;
 						}
 			}
@@ -384,6 +385,6 @@ class NamePatternEditor {
 			blocks.insert(ev.newIndex, moved);
 			onChange( toString() );
 			renderAll();
-		});
+		}, { onlyDraggables:true });
 	}
 }
