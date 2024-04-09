@@ -294,6 +294,7 @@ enum AppCommand {
 	@k("shift e") C_ToggleSelectEmptySpaces;
 	@k("shift t") C_ToggleTileStacking;
 	@k("[zqsd] a, [arrows] a, shift a") C_ToggleSingleLayerMode;
+	@k("ctrl b") C_BakeAutoLayers;
 	@k("[win] ctrl h, [linux] ctrl h, [mac] shift h") C_ToggleDetails;
 	@k("g") C_ToggleGrid;
 	@k("ctrl f, ctrl shift p, ctrl k, ctrl shift k") @input C_CommandPalette;

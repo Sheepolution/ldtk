@@ -642,6 +642,9 @@ class Editor extends Page {
 			case C_SaveProjectAs:
 				onSave(true);
 
+			case C_BakeAutoLayers:
+				project.defs.bakeAutoLayers(project);
+
 			case C_CommandPalette:
 				if( ui.CommandPalette.exists() )
 					ui.CommandPalette.callAgain();

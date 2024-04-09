@@ -637,6 +637,7 @@ class App extends dn.Process {
 			case C_NavDown:
 			case C_NavLeft:
 			case C_NavRight:
+			case C_BakeAutoLayers:
 			case C_ToggleAutoLayerRender:
 			case C_ToggleSelectEmptySpaces:
 			case C_ToggleTileStacking:
