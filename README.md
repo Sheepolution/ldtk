@@ -9,6 +9,10 @@ Links: [Official website](https://ldtk.io/) | [Haxe API (on GitHub)](https://git
 [![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/deepnight/ldtk/test-windows.yml?label=LDtk%20build)](https://github.com/deepnight/ldtk/actions/workflows/test-windows.yml)
 [![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/deepnight/ldtk-haxe-api/unitTests.yml?label=Unit%20tests)](https://github.com/deepnight/ldtk-haxe-api/actions/workflows/unitTests.yml)
 
+# Fork
+
+This fork adds the feature that all autolayers will bake when pressing Ctrl + B. The existing baked layers will be replaced (unless the layers were renamed).
+
 # Getting LDtk latest version
 
 Visit [LDtk.io](https://ldtk.io) to get latest version.
